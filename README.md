@@ -70,8 +70,8 @@ sudo apt install ffmpeg
 ### 下载工具
 
 ```bash
-git clone https://github.com/yourusername/HumanLapse.git
-cd HumanLapse
+git clone https://github.com/HatsuSumi/HumanLapse-One-Click-Video-Speed-Controller.git
+cd HumanLapse-One-Click-Video-Speed-Controller
 ```
 
 ---
@@ -434,8 +434,8 @@ sudo apt install ffmpeg
 ### Download Tool
 
 ```bash
-git clone https://github.com/yourusername/HumanLapse.git
-cd HumanLapse
+git clone https://github.com/HatsuSumi/HumanLapse-One-Click-Video-Speed-Controller.git
+cd HumanLapse-One-Click-Video-Speed-Controller
 ```
 
 ---
