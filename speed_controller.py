@@ -45,6 +45,7 @@ DEFAULT_FIT = "contain"
 DEFAULT_PATTERN = "*.mp4"       # 批量匹配的文件后缀，例如 "*.mov", "*.avi"
 DEFAULT_RECURSE = False         # True = 批量时自动搜索所有子文件夹; False = 仅当前文件夹
 DEFAULT_SKIP_EXISTING = False   # True = 如果输出文件已存在，则跳过不处理 (防重复)
+DEFAULT_MERGE = False           # True = 合并模式：拼接所有视频后再加速; False = 每个视频单独处理
 
 # --- [5. 日志与杂项] ---
 # 日志设置：
@@ -429,6 +430,122 @@ def timelapse_one(
         log_close()
 
 
+# ----------------- 合并模式 -----------------
+def merge_videos(files: list[Path], output_path: Path, quiet: bool) -> Path:
+    """
+    使用 FFmpeg concat 将多个视频拼接成一个临时文件
+    返回临时文件路径
+    """
+    if not files:
+        raise ValueError("没有文件可供合并")
+    
+    # 创建 concat 列表文件
+    concat_list = output_path.parent / f"_concat_list_{int(time.time())}.txt"
+    try:
+        with open(concat_list, "w", encoding="utf-8") as f:
+            for video in files:
+                # FFmpeg concat 格式：file 'path'
+                # 路径中的单引号需要转义
+                safe_path = str(video.absolute()).replace("'", "'\\''")
+                f.write(f"file '{safe_path}'\n")
+        
+        # 临时合并文件
+        temp_merged = output_path.parent / f"_temp_merged_{int(time.time())}.mp4"
+        
+        print(f"[信息] 正在合并 {len(files)} 个视频...")
+        
+        cmd = [FFMPEG, "-f", "concat", "-safe", "0", "-i", str(concat_list)]
+        if quiet:
+            cmd += ["-loglevel", "error"]
+        cmd += ["-c", "copy", "-y", str(temp_merged)]
+        
+        subprocess.check_call(cmd)
+        
+        print(f"[信息] 合并完成：{temp_merged}")
+        return temp_merged
+        
+    finally:
+        # 清理 concat 列表文件
+        if concat_list.exists():
+            try:
+                concat_list.unlink()
+            except Exception:
+                pass
+
+
+def merge_and_process(
+    folder: Path,
+    pattern: str,
+    recurse: bool,
+    target_seconds: float,
+    out_fps: int,
+    target_bitrate: str,
+    max_bitrate: str,
+    bufsize: str,
+    profile: str,
+    level: str,
+    res: str,
+    size: str | None,
+    fit: str,
+    quiet: bool,
+    log_spec: str | None,
+) -> Path:
+    """
+    合并模式：收集所有视频 -> 拼接成一个 -> 加速处理
+    """
+    files = collect_files(folder, pattern, recurse)
+    if not files:
+        raise RuntimeError(f"[错误] 没找到匹配文件：{folder} / {pattern}（recurse={recurse}）")
+    
+    print(f"[信息] 合并模式：找到 {len(files)} 个文件")
+    for i, f in enumerate(files, start=1):
+        print(f"  [{i}] {f.name}")
+    
+    # 输出文件名
+    output_name = f"{folder.name}_merged_timelapse_{target_seconds:g}s.mp4".replace(".", "p")
+    output_path = folder / output_name
+    
+    # 1. 合并所有视频
+    temp_merged = None
+    try:
+        temp_merged = merge_videos(files, output_path, quiet)
+        
+        # 2. 对合并后的视频进行加速处理
+        print(f"\n[信息] 开始处理合并后的视频...")
+        final_output, stats = timelapse_one(
+            input_path=temp_merged,
+            target_seconds=target_seconds,
+            out_fps=out_fps,
+            target_bitrate=target_bitrate,
+            max_bitrate=max_bitrate,
+            bufsize=bufsize,
+            profile=profile,
+            level=level,
+            res=res,
+            size=size,
+            fit=fit,
+            quiet=quiet,
+            log_spec=log_spec,
+            skip_existing=False,
+        )
+        
+        # 重命名输出文件（因为 timelapse_one 会自动生成名字）
+        if final_output != output_path:
+            final_output.rename(output_path)
+        
+        print(f"\n[完成] 合并模式输出：{output_path}")
+        return output_path
+        
+    finally:
+        # 清理临时合并文件
+        if temp_merged and temp_merged.exists():
+            try:
+                temp_merged.unlink()
+                print(f"[信息] 已清理临时文件：{temp_merged}")
+            except Exception as e:
+                print(f"[警告] 清理临时文件失败：{e}")
+
+
 # ----------------- 批量模式 -----------------
 def collect_files(folder: Path, pattern: str, recurse: bool) -> list[Path]:
     if recurse:
@@ -531,6 +648,7 @@ def main():
     parser.add_argument("--batch", help="批量处理文件夹路径（启用批量模式）")
     parser.add_argument("--pattern", default=DEFAULT_PATTERN, help='批量匹配规则（默认 "*.mp4"）')
     parser.add_argument("--recurse", action="store_true", default=DEFAULT_RECURSE, help="批量模式：递归子目录")
+    parser.add_argument("--merge", action="store_true", default=DEFAULT_MERGE, help="合并模式：拼接所有视频后再加速（需配合 --batch 使用）")
 
     # 通用参数
     parser.add_argument("-t", "--target", default=str(DEFAULT_TARGET_SECONDS),
@@ -588,24 +706,48 @@ def main():
         if not folder.exists() or not folder.is_dir():
             raise SystemExit(f"[错误] batch 路径不是有效文件夹：{folder}")
 
-        _, _ = batch_process(
-            folder=folder,
-            pattern=args.pattern,
-            recurse=args.recurse,
-            target_seconds=target_seconds,
-            out_fps=args.fps,
-            target_bitrate=args.target_bitrate,
-            max_bitrate=args.max_bitrate,
-            bufsize=args.bufsize,
-            profile=args.profile,
-            level=args.level,
-            res=args.res,
-            size=args.size,
-            fit=args.fit,
-            quiet=args.quiet,
-            log_spec=args.log,
-            skip_existing=args.skip_existing,
-        )
+        # 合并模式：拼接所有视频后再加速
+        if args.merge:
+            try:
+                merge_and_process(
+                    folder=folder,
+                    pattern=args.pattern,
+                    recurse=args.recurse,
+                    target_seconds=target_seconds,
+                    out_fps=args.fps,
+                    target_bitrate=args.target_bitrate,
+                    max_bitrate=args.max_bitrate,
+                    bufsize=args.bufsize,
+                    profile=args.profile,
+                    level=args.level,
+                    res=args.res,
+                    size=args.size,
+                    fit=args.fit,
+                    quiet=args.quiet,
+                    log_spec=args.log,
+                )
+            except Exception as e:
+                raise SystemExit(f"[错误] 合并模式失败：{e}")
+        else:
+            # 普通批量模式：每个视频单独处理
+            _, _ = batch_process(
+                folder=folder,
+                pattern=args.pattern,
+                recurse=args.recurse,
+                target_seconds=target_seconds,
+                out_fps=args.fps,
+                target_bitrate=args.target_bitrate,
+                max_bitrate=args.max_bitrate,
+                bufsize=args.bufsize,
+                profile=args.profile,
+                level=args.level,
+                res=args.res,
+                size=args.size,
+                fit=args.fit,
+                quiet=args.quiet,
+                log_spec=args.log,
+                skip_existing=args.skip_existing,
+            )
 
         if shutdown_delay is not None:
             shutdown_windows(delay_seconds=shutdown_delay)

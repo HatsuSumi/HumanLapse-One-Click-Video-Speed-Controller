@@ -26,7 +26,7 @@ HumanLapse 是一个功能强大的视频延时处理工具，可以将视频智
 > *   **Premiere Pro**：最高仅支持 200% 加速，8小时最高加速成 **4小时**，无法一次性将 8 小时素材缩短至 30 秒，需要分多次步骤导入视频加速导出，操作繁琐。
 > *   **其他工具**：市面上现有的视频加速工具，往往不支持直接导入长达 8 小时的超大视频文件。
 >
-> 这便是我开发此工具的初衷 —— **专为超长视频的一键极速浓缩而生。**
+> 这便是我开发此工具的初衷 —— **专为超长视频的一键高倍速压缩而生。**
 
 ### ✨ 核心特性
 
@@ -104,17 +104,17 @@ python speed_controller.py input.mp4 -t 01:02:03
 #### 批量处理
 
 ```bash
-# 批量处理文件夹内所有mp4文件
-python speed_controller.py --batch D:\videos
+# 批量处理文件夹内所有mp4文件，压缩到30秒
+python speed_controller.py --batch D:\videos -t 30
 
 # 递归处理子目录
-python speed_controller.py --batch D:\videos --recurse
+python speed_controller.py --batch D:\videos --recurse -t 30
 
 # 处理特定格式（如avi）
-python speed_controller.py --batch D:\videos --pattern "*.avi"
+python speed_controller.py --batch D:\videos --pattern "*.avi" -t 30
 
 # 跳过已存在的输出文件
-python speed_controller.py --batch D:\videos --skip-existing
+python speed_controller.py --batch D:\videos --skip-existing -t 30
 ```
 
 ---
@@ -129,6 +129,7 @@ python speed_controller.py --batch D:\videos --skip-existing
 | `--batch` | 批量模式：文件夹路径 | `--batch D:\videos` |
 | `--pattern` | 批量匹配规则（默认`*.mp4`） | `--pattern "*.avi"` |
 | `--recurse` | 批量模式：递归搜索子目录 | `--recurse` |
+| `--merge` | 合并模式：拼接所有视频后再加速（需配合`--batch`） | `--merge` |
 
 ### 时长与帧率
 
@@ -217,6 +218,18 @@ python speed_controller.py --batch D:\videos --quiet --skip-existing --shutdown 
 ```bash
 python speed_controller.py input.mp4 -t 1:00 --size 1280x720 --fit crop
 ```
+
+### 示例7：合并模式（拼接多个视频后压缩）
+
+将文件夹内所有视频拼接成一个，然后压缩到30秒：
+
+```bash
+python speed_controller.py --batch D:\videos --merge -t 30
+```
+
+> 💡 **合并模式说明**：
+> - **普通批量模式**：每个视频单独处理成30秒（10个视频→10个30秒输出）
+> - **合并模式**：先拼接所有视频，再整体压缩成30秒（10个视频→1个30秒输出）
 
 ---
 
@@ -330,6 +343,10 @@ DEFAULT_LOG = "AUTO"            # 默认开启日志 (设为 None 则关闭)
 
 ## 📝 更新日志
 
+### v1.1.0
+- ✅ 新增合并模式：支持拼接多个视频后再加速处理
+- ✅ 优化批量处理逻辑，增强错误处理
+
 ### v1.0.0
 - ✅ 支持单文件/批量处理
 - ✅ 智能速度调整
@@ -390,7 +407,7 @@ HumanLapse is a powerful video time-lapse processing tool that can intelligently
 > *   **Premiere Pro**: Supports a maximum speed of 200%. An 8-hour video can only be sped up to **4 hours**. It cannot shorten 8 hours of footage to 30 seconds in one go, requiring multiple steps of importing, speeding up, and exporting, which is tedious.
 > *   **Other Tools**: Existing video speed controllers on the market often do not support importing massive video files that are 8 hours long.
 >
-> This is the reason I developed this tool — **born specifically for one-click extreme compression of ultra-long videos.**
+> This is the reason I developed this tool — **born specifically for one-click extreme speed compression of ultra-long videos.**
 
 ### ✨ Core Features
 
@@ -468,17 +485,17 @@ python speed_controller.py input.mp4 -t 01:02:03
 #### Batch Processing
 
 ```bash
-# Process all mp4 files in a folder
-python speed_controller.py --batch D:\videos
+# Process all mp4 files in a folder, compress to 30 seconds
+python speed_controller.py --batch D:\videos -t 30
 
 # Recursively process subdirectories
-python speed_controller.py --batch D:\videos --recurse
+python speed_controller.py --batch D:\videos --recurse -t 30
 
 # Process specific format (e.g., avi)
-python speed_controller.py --batch D:\videos --pattern "*.avi"
+python speed_controller.py --batch D:\videos --pattern "*.avi" -t 30
 
 # Skip already existing output files
-python speed_controller.py --batch D:\videos --skip-existing
+python speed_controller.py --batch D:\videos --skip-existing -t 30
 ```
 
 ---
@@ -493,6 +510,7 @@ python speed_controller.py --batch D:\videos --skip-existing
 | `--batch` | Batch mode: Folder path | `--batch D:\videos` |
 | `--pattern` | Batch matching pattern (default `*.mp4`) | `--pattern "*.avi"` |
 | `--recurse` | Batch mode: Recursively search subdirectories | `--recurse` |
+| `--merge` | Merge mode: Concatenate all videos then speed up (use with `--batch`) | `--merge` |
 
 ### Duration & Frame Rate
 
@@ -539,6 +557,189 @@ python speed_controller.py --batch D:\videos --skip-existing
 |-----------|-------------|---------|
 | `--skip-existing` | Skip existing output files | `--skip-existing` |
 | `--shutdown` | Auto shutdown after completion (optional delay) | `--shutdown` / `--shutdown 120` |
+
+---
+
+## 📚 Usage Examples
+
+### Example 1: Basic Time-Lapse
+
+Compress a 10-minute video to 30 seconds:
+
+```bash
+python speed_controller.py long_video.mp4 -t 30
+```
+
+### Example 2: Batch Processing
+
+Process all videos in a folder:
+
+```bash
+python speed_controller.py --batch D:\videos --recurse -t 30 --res 1080p --skip-existing
+```
+
+### Example 3: Merge Mode (Concatenate Multiple Videos)
+
+Concatenate all videos in a folder, then compress to 30 seconds:
+
+```bash
+python speed_controller.py --batch D:\videos --merge -t 30
+```
+
+> 💡 **Merge Mode Explanation**:
+> - **Normal Batch Mode**: Each video is processed separately to 30 seconds (10 videos → 10 outputs of 30s each)
+> - **Merge Mode**: All videos are concatenated first, then the combined video is compressed to 30 seconds (10 videos → 1 output of 30s)
+
+### Example 4: 1080p Output
+
+```bash
+python speed_controller.py input.mp4 -t 45 --res 1080p --fit pad
+```
+
+### Example 5: Custom Bitrate High Quality Output
+
+```bash
+python speed_controller.py input.mp4 -t 30 --b 10000k --max 40000k --buf 80000k
+```
+
+### Example 6: Quiet Mode + Auto Shutdown
+
+```bash
+python speed_controller.py --batch D:\videos --quiet --skip-existing --shutdown 60
+```
+
+### Example 7: Custom Resolution + Crop Mode
+
+```bash
+python speed_controller.py input.mp4 -t 1:00 --size 1280x720 --fit crop
+```
+
+---
+
+## 📊 Output Explanation
+
+### File Naming Convention
+
+Output files are automatically named in the following format:
+
+```
+{original_filename}_timelapse_{target_seconds}s_{resolution}_{fit_mode}_PR.mp4
+```
+
+**Example:**
+- Input: `sunset.mp4`
+- Parameters: `-t 30 --res 1080p --fit pad`
+- Output: `sunset_timelapse_30s_1920x1080_pad_PR.mp4`
+
+### Statistics Information
+
+After processing, detailed statistics will be displayed:
+
+```
+[Statistics] probe(read duration): 00:00:01 (1.23s)
+[Statistics] filterprep(prepare filters): 00:00:00 (0.01s)
+[Statistics] pass1(first pass): 00:05:23 (323.45s)
+[Statistics] pass2(second pass): 00:06:12 (372.18s)
+[Statistics] cleanup(clean log): 00:00:00 (0.02s)
+[Statistics] total(total time): 00:11:36 (696.89s)
+[Statistics] processing speed: 51.64x realtime (input duration / total time)
+```
+
+---
+
+## 🔧 Technical Details
+
+### Encoding Parameters (PR Style)
+
+- **Encoder**: libx264
+- **Encoding Mode**: 2-Pass VBR
+- **Frame Rate**: 25fps (PAL)
+- **Profile**: high
+- **Level**: 4.0
+- **Pixel Format**: yuv420p
+- **Scaling Algorithm**: Lanczos
+- **Container**: MP4 with faststart
+
+### Speed Calculation Logic
+
+```
+Speed Multiplier = Input Duration / Target Duration
+```
+
+- Multiplier > 1: Speed up (e.g., 60s → 30s = 2x speed)
+- Multiplier < 1: Slow down (e.g., 30s → 60s = 0.5x speed)
+
+### Filter Chain
+
+```
+setpts=PTS/{speed}, fps={out_fps}, scale={resolution}
+```
+
+---
+
+## 🛠️ FAQ
+
+### Q: Cannot find ffmpeg/ffprobe?
+
+**A:** Ensure FFmpeg is installed and added to system PATH. Verify with:
+```bash
+ffmpeg -version
+ffprobe -version
+```
+
+### Q: Some files fail during batch processing?
+
+**A:** Use the `--log` parameter to save logs and check detailed error messages:
+```bash
+python speed_controller.py --batch D:\videos --log D:\logs\
+```
+
+### Q: How to use auto shutdown on Linux/Mac?
+
+**A:** The `--shutdown` parameter currently only supports Windows. Linux/Mac users can use system commands:
+```bash
+python speed_controller.py input.mp4 && sudo shutdown -h now
+```
+
+### Q: How to keep original audio?
+
+**A:** The current version outputs silent videos (time-lapse videos typically don't need audio). To retain audio, modify the `-an` parameter in the code.
+
+### Q: Output file is too large?
+
+**A:** Reduce the target bitrate:
+```bash
+python speed_controller.py input.mp4 --b 3000k --max 12000k --buf 24000k
+```
+
+### Q: How to modify default parameters (e.g., enable logging by default, default 1080p)?
+
+**A:** You can directly edit the `DEFAULT_` variable section at the beginning of the `speed_controller.py` file. For example:
+```python
+DEFAULT_TARGET_SECONDS = 30.0   # Default duration
+DEFAULT_RES = "1080p"           # Default resolution
+DEFAULT_LOG = "AUTO"            # Enable logging by default (set to None to disable)
+```
+After modification, running `python speed_controller.py video.mp4` will automatically apply these new default values.
+
+---
+
+## 📝 Changelog
+
+### v1.1.0
+- ✅ Added merge mode: Support for concatenating multiple videos before speed processing
+- ✅ Optimized batch processing logic with enhanced error handling
+
+### v1.0.0
+- ✅ Support for single file/batch processing
+- ✅ Smart speed adjustment
+- ✅ 2-Pass VBR encoding
+- ✅ Multiple resolution presets
+- ✅ 4 fit modes
+- ✅ Detailed statistics
+- ✅ Log output functionality
+- ✅ Skip existing files
+- ✅ Auto shutdown feature (Windows)
 
 ---
 
