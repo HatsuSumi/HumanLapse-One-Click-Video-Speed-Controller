@@ -502,7 +502,8 @@ def merge_and_process(
         print(f"  [{i}] {f.name}")
     
     # 输出文件名
-    output_name = f"{folder.name}_merged_timelapse_{target_seconds:g}s.mp4".replace(".", "p")
+    time_str = f"{target_seconds:g}s".replace(".", "p")
+    output_name = f"{folder.name}_merged_timelapse_{time_str}.mp4"
     output_path = folder / output_name
     
     # 1. 合并所有视频
