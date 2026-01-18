@@ -43,7 +43,36 @@ HumanLapse 是一个功能强大的视频延时处理工具，可以将视频智
 
 ## 🚀 快速开始
 
-### 环境要求
+### 方式1：使用 EXE（最简单）
+
+> ⚡ **无需安装 Python！拖放即用！**
+
+#### 下载 EXE
+
+从 [Releases](https://github.com/HatsuSumi/HumanLapse-One-Click-Video-Speed-Controller/releases) 下载 `HumanLapse.exe`
+
+#### 使用方法
+
+**拖动视频文件**：
+1. 拖动单个视频文件到 `HumanLapse.exe`
+2. 自动压缩到30秒（60fps，保持原分辨率）
+
+**拖动文件夹**：
+1. 拖动包含多个视频的文件夹到 `HumanLapse.exe`
+2. 自动合并所有视频并压缩到30秒（60fps，保持原分辨率）
+
+#### 注意事项
+
+- ✅ 需要安装 **FFmpeg** 并添加到系统 PATH（见下方安装说明）
+- ✅ 支持所有 FFmpeg 支持的视频格式
+- ✅ 文件夹模式会自动识别文件名中的 `_数字` 并排序
+- ⚠️ 文件夹模式**不会**递归搜索子文件夹（仅处理当前文件夹内的视频）
+
+---
+
+### 方式2：使用 Python 脚本（高级）
+
+#### 环境要求
 
 - **Python 3.8+**
 - **FFmpeg** 和 **FFprobe**（需添加到系统PATH）
@@ -130,6 +159,8 @@ python speed_controller.py --batch D:\videos --skip-existing -t 30
 | `--pattern` | 批量匹配规则（默认`*.mp4`） | `--pattern "*.avi"` |
 | `--recurse` | 批量模式：递归搜索子目录 | `--recurse` |
 | `--merge` | 合并模式：拼接所有视频后再加速（需配合`--batch`） | `--merge` |
+| `--merge-only` | 只合并模式：仅拼接视频，不做速度处理（需配合`--batch`） | `--merge-only` |
+| `--duration-only` | 只输出总时长模式：统计所有视频时长，不做任何处理（需配合`--batch`） | `--duration-only` |
 
 ### 时长与帧率
 
@@ -175,6 +206,7 @@ python speed_controller.py --batch D:\videos --skip-existing -t 30
 | 参数 | 说明 | 示例 |
 |------|------|------|
 | `--skip-existing` | 跳过已存在的输出文件 | `--skip-existing` |
+| `--yes`, `-y` | 自动确认所有提示，跳过交互（适用于合并模式） | `--yes` |
 | `--shutdown` | 完成后自动关机（可选延迟秒数） | `--shutdown` / `--shutdown 120` |
 
 ---
@@ -230,6 +262,85 @@ python speed_controller.py --batch D:\videos --merge -t 30
 > 💡 **合并模式说明**：
 > - **普通批量模式**：每个视频单独处理成30秒（10个视频→10个30秒输出）
 > - **合并模式**：先拼接所有视频，再整体压缩成30秒（10个视频→1个30秒输出）
+
+### 示例8：只合并模式（拼接视频但不加速）
+
+将文件夹内所有视频拼接成一个完整视频，保持原速度：
+
+```bash
+python speed_controller.py --batch D:\videos --merge-only
+```
+
+> 💡 **只合并模式说明**：
+> - 仅使用FFmpeg的concat功能拼接视频
+> - 不做任何速度处理、编码转换
+> - 输出文件名：`{文件夹名}_merged.mp4`
+> - 适用场景：需要将多段录屏合并成完整视频
+> 
+> **智能排序机制**：
+> - 程序会自动识别文件名末尾的 `_数字` 模式（如 `part_1.mp4`, `part_2.mp4`）
+> - 按数字大小排序，而非字符串排序（`part_10.mp4` 会正确排在 `part_2.mp4` 后面）
+> - 合并前会显示文件列表，让你确认顺序
+> - 如果顺序不对，可以选择交互式自定义排序
+> 
+> **跳过交互**：
+> ```bash
+> python speed_controller.py --batch D:\videos --merge-only --yes
+> ```
+> 使用 `--yes` 参数可跳过确认提示，直接按默认顺序合并
+
+### 示例9：交互式自定义排序
+
+如果自动排序不符合预期，可以手动指定顺序：
+
+```bash
+python speed_controller.py --batch D:\videos --merge-only
+```
+
+**交互过程示例**：
+```
+[信息] 只合并模式：找到 3 个文件
+
+[信息] 将按以下顺序合并 3 个视频：
+  [1] part_1.mp4
+  [2] part_2.mp4
+  [3] part_3.mp4
+
+是否符合预期？y是，n否，自定义排序(y/n): n
+
+========== 自定义排序模式 ==========
+可选视频列表：
+  [1] part_1.mp4
+  [2] part_2.mp4
+  [3] part_3.mp4
+
+提示：输入编号选择视频，输入 b 返回上一步，输入 q 取消操作
+
+请选择第1个视频 [编号1-3]: 2
+请选择第2个视频 [编号1-3]: 3
+请选择第3个视频 [编号1-3]: 1
+
+========== 最终顺序预览 ==========
+  [1] part_2.mp4
+  [2] part_3.mp4
+  [3] part_1.mp4
+
+确认此顺序？(y=确认/n=重新排序/q=取消): y
+```
+
+### 示例10：只输出总时长（统计时长不处理）
+
+统计文件夹内所有视频的总时长：
+
+```bash
+python speed_controller.py --batch D:\videos --duration-only
+```
+
+> 💡 **只输出总时长模式说明**：
+> - 不做任何视频处理，仅读取并统计时长
+> - 显示每个视频的时长和总时长
+> - 计算平均时长
+> - 适用场景：规划处理前了解素材总量
 
 ---
 
@@ -294,6 +405,116 @@ setpts=PTS/{speed}, fps={out_fps}, scale={resolution}
 
 ---
 
+## 🎬 支持的视频格式
+
+### 输入格式
+
+本工具基于 **FFmpeg**，理论上支持 FFmpeg 支持的所有视频格式：
+
+**常见格式**：
+- ✅ **MP4** (`.mp4`) - 默认格式
+- ✅ **MOV** (`.mov`) - QuickTime
+- ✅ **AVI** (`.avi`) - 传统格式
+- ✅ **MKV** (`.mkv`) - Matroska
+- ✅ **WebM** (`.webm`) - Web视频
+- ✅ **FLV** (`.flv`) - Flash视频
+
+**专业格式**：
+- ✅ **MTS/M2TS** (`.mts`, `.m2ts`) - AVCHD（摄像机）
+- ✅ **MXF** (`.mxf`) - 专业广播
+- ✅ **ProRes** (`.mov`) - Apple专业格式
+- ✅ **WMV** (`.wmv`) - Windows Media
+
+### 输出格式
+
+所有处理后的视频统一输出为：
+- 📦 **容器格式**：MP4
+- 🎞️ **视频编码**：H.264 (libx264)
+- 📊 **Profile/Level**：High@4.0
+- 🎨 **像素格式**：yuv420p
+
+### 使用不同格式
+
+**单文件模式**（直接指定任何格式）：
+```bash
+python speed_controller.py video.mov -t 30
+python speed_controller.py video.avi -t 30
+python speed_controller.py video.mkv -t 30
+```
+
+**批量模式**（使用 `--pattern` 指定格式）：
+```bash
+# 处理所有 MOV 文件
+python speed_controller.py --batch D:\videos --pattern "*.mov" -t 30
+
+# 处理所有 AVI 文件
+python speed_controller.py --batch D:\videos --pattern "*.avi" -t 30
+```
+
+### ⚠️ 注意事项
+
+- **合并模式建议**：使用 `--merge` 或 `--merge-only` 时，建议所有视频格式、分辨率、帧率保持一致，以避免兼容性问题
+- **输出固定**：无论输入什么格式，输出始终为 MP4 (H.264)
+- **编码兼容性**：某些特殊编码（如 ProRes、HEVC）可能需要 FFmpeg 包含相应的解码器支持
+
+---
+
+## 📋 文件命名建议
+
+为了让合并功能正确识别文件顺序，建议使用以下命名规范：
+
+### ✅ **推荐命名格式**
+
+**格式1：名称_数字**（推荐）
+```
+part_1.mp4
+part_2.mp4
+part_10.mp4
+part_20.mp4
+```
+
+```
+recording_001.mp4
+recording_002.mp4
+recording_010.mp4
+```
+
+```
+绘画过程_1.mp4
+绘画过程_2.mp4
+绘画过程_3.mp4
+```
+
+**格式2：名称+数字**（也支持）
+```
+part1.mp4
+part2.mp4
+part10.mp4
+part20.mp4
+```
+
+```
+video1.mp4
+video2.mp4
+video10.mp4
+```
+
+### ⚠️ **注意事项**
+
+- 数字应该在文件名**末尾**（扩展名前）
+- 支持两种格式：`名称_数字` 或 `名称数字`（字母紧接数字）
+- 程序会按数字大小排序，而非字符串排序（`part10.mp4` 会正确排在 `part2.mp4` 后面）
+- 如果文件名不符合规范，程序会按字母顺序排序，并提示你确认
+
+### 🔧 **其他命名也可用**
+
+即使文件名不符合上述规范，程序也会：
+1. 显示自动排序的结果
+2. 让你确认是否正确
+3. 如果不对，可以手动指定顺序
+
+---
+
 ## 🛠️ 常见问题
 
 ### Q: 提示找不到 ffmpeg/ffprobe？
@@ -342,6 +563,15 @@ DEFAULT_LOG = "AUTO"            # 默认开启日志 (设为 None 则关闭)
 ---
 
 ## 📝 更新日志
+
+### v1.2.0
+- ✅ 新增只合并模式（`--merge-only`）：仅拼接视频，不做速度处理
+- ✅ 新增只输出总时长模式（`--duration-only`）：统计所有视频时长，不做任何处理
+- ✅ 新增智能排序：自动识别文件名末尾的 `_数字` 模式，按数字大小排序
+- ✅ 新增交互式确认：合并前显示文件列表，让用户确认顺序
+- ✅ 新增自定义排序：支持手动指定文件合并顺序，可返回修改
+- ✅ 新增 `--yes` 参数：跳过交互提示，自动确认（适用于脚本自动化）
+- ✅ 增加模式冲突检测，防止同时使用多个互斥模式
 
 ### v1.1.0
 - ✅ 新增合并模式：支持拼接多个视频后再加速处理
@@ -424,7 +654,36 @@ HumanLapse is a powerful video time-lapse processing tool that can intelligently
 
 ## 🚀 Quick Start
 
-### Requirements
+### Method 1: Use EXE (Easiest)
+
+> ⚡ **No Python installation required! Drag and drop!**
+
+#### Download EXE
+
+Download `HumanLapse.exe` from [Releases](https://github.com/HatsuSumi/HumanLapse-One-Click-Video-Speed-Controller/releases)
+
+#### Usage
+
+**Drag a video file**:
+1. Drag a single video file onto `HumanLapse.exe`
+2. Automatically compress to 30 seconds (60fps, keep original resolution)
+
+**Drag a folder**:
+1. Drag a folder containing multiple videos onto `HumanLapse.exe`
+2. Automatically merge all videos and compress to 30 seconds (60fps, keep original resolution)
+
+#### Notes
+
+- ✅ Requires **FFmpeg** installed and added to system PATH (see installation below)
+- ✅ Supports all video formats supported by FFmpeg
+- ✅ Folder mode automatically recognizes `_number` in filenames and sorts accordingly
+- ⚠️ Folder mode does **not** recursively search subfolders (only processes videos in the current folder)
+
+---
+
+### Method 2: Use Python Script (Advanced)
+
+#### Requirements
 
 - **Python 3.8+**
 - **FFmpeg** and **FFprobe** (must be added to system PATH)
@@ -511,6 +770,8 @@ python speed_controller.py --batch D:\videos --skip-existing -t 30
 | `--pattern` | Batch matching pattern (default `*.mp4`) | `--pattern "*.avi"` |
 | `--recurse` | Batch mode: Recursively search subdirectories | `--recurse` |
 | `--merge` | Merge mode: Concatenate all videos then speed up (use with `--batch`) | `--merge` |
+| `--merge-only` | Merge-only mode: Only concatenate videos without speed processing (use with `--batch`) | `--merge-only` |
+| `--duration-only` | Duration-only mode: Only calculate total duration without any processing (use with `--batch`) | `--duration-only` |
 
 ### Duration & Frame Rate
 
@@ -556,6 +817,7 @@ python speed_controller.py --batch D:\videos --skip-existing -t 30
 | Parameter | Description | Example |
 |-----------|-------------|---------|
 | `--skip-existing` | Skip existing output files | `--skip-existing` |
+| `--yes`, `-y` | Auto-confirm all prompts, skip interaction (for merge modes) | `--yes` |
 | `--shutdown` | Auto shutdown after completion (optional delay) | `--shutdown` / `--shutdown 120` |
 
 ---
@@ -589,6 +851,85 @@ python speed_controller.py --batch D:\videos --merge -t 30
 > 💡 **Merge Mode Explanation**:
 > - **Normal Batch Mode**: Each video is processed separately to 30 seconds (10 videos → 10 outputs of 30s each)
 > - **Merge Mode**: All videos are concatenated first, then the combined video is compressed to 30 seconds (10 videos → 1 output of 30s)
+
+### Example 8: Merge-Only Mode (Concatenate Without Speed Processing)
+
+Concatenate all videos in a folder into one complete video, keeping original speed:
+
+```bash
+python speed_controller.py --batch D:\videos --merge-only
+```
+
+> 💡 **Merge-Only Mode Explanation**:
+> - Only uses FFmpeg's concat feature to merge videos
+> - No speed processing or encoding conversion
+> - Output filename: `{folder_name}_merged.mp4`
+> - Use case: Merge multiple screen recordings into a complete video
+> 
+> **Smart Sorting Mechanism**:
+> - Automatically recognizes `_number` pattern at the end of filenames (e.g., `part_1.mp4`, `part_2.mp4`)
+> - Sorts by numeric value, not string comparison (`part_10.mp4` correctly comes after `part_2.mp4`)
+> - Shows file list before merging for confirmation
+> - If order is incorrect, you can choose interactive custom sorting
+> 
+> **Skip Interaction**:
+> ```bash
+> python speed_controller.py --batch D:\videos --merge-only --yes
+> ```
+> Use `--yes` to skip confirmation prompts and merge directly in default order
+
+### Example 9: Interactive Custom Sorting
+
+If automatic sorting doesn't meet expectations, you can manually specify the order:
+
+```bash
+python speed_controller.py --batch D:\videos --merge-only
+```
+
+**Interactive Process Example**:
+```
+[Info] Merge-only mode: Found 3 files
+
+[Info] Will merge 3 videos in the following order:
+  [1] part_1.mp4
+  [2] part_2.mp4
+  [3] part_3.mp4
+
+Does this match your expectations? y=yes, n=no, custom sorting(y/n): n
+
+========== Custom Sorting Mode ==========
+Available video list:
+  [1] part_1.mp4
+  [2] part_2.mp4
+  [3] part_3.mp4
+
+Tip: Enter number to select video, enter b to go back, enter q to cancel
+
+Select 1st video [number 1-3]: 2
+Select 2nd video [number 1-3]: 3
+Select 3rd video [number 1-3]: 1
+
+========== Final Order Preview ==========
+  [1] part_2.mp4
+  [2] part_3.mp4
+  [3] part_1.mp4
+
+Confirm this order? (y=confirm/n=re-sort/q=cancel): y
+```
+
+### Example 10: Duration-Only Mode (Calculate Duration Without Processing)
+
+Calculate the total duration of all videos in a folder:
+
+```bash
+python speed_controller.py --batch D:\videos --duration-only
+```
+
+> 💡 **Duration-Only Mode Explanation**:
+> - No video processing, only reads and calculates duration
+> - Displays each video's duration and total duration
+> - Calculates average duration
+> - Use case: Understand total footage before planning processing
 
 ### Example 4: 1080p Output
 
@@ -677,6 +1018,116 @@ setpts=PTS/{speed}, fps={out_fps}, scale={resolution}
 
 ---
 
+## 🎬 Supported Video Formats
+
+### Input Formats
+
+This tool is based on **FFmpeg** and theoretically supports all video formats that FFmpeg supports:
+
+**Common Formats**:
+- ✅ **MP4** (`.mp4`) - Default format
+- ✅ **MOV** (`.mov`) - QuickTime
+- ✅ **AVI** (`.avi`) - Legacy format
+- ✅ **MKV** (`.mkv`) - Matroska
+- ✅ **WebM** (`.webm`) - Web video
+- ✅ **FLV** (`.flv`) - Flash video
+
+**Professional Formats**:
+- ✅ **MTS/M2TS** (`.mts`, `.m2ts`) - AVCHD (Camcorder)
+- ✅ **MXF** (`.mxf`) - Professional broadcast
+- ✅ **ProRes** (`.mov`) - Apple professional format
+- ✅ **WMV** (`.wmv`) - Windows Media
+
+### Output Format
+
+All processed videos are uniformly output as:
+- 📦 **Container Format**: MP4
+- 🎞️ **Video Codec**: H.264 (libx264)
+- 📊 **Profile/Level**: High@4.0
+- 🎨 **Pixel Format**: yuv420p
+
+### Using Different Formats
+
+**Single File Mode** (directly specify any format):
+```bash
+python speed_controller.py video.mov -t 30
+python speed_controller.py video.avi -t 30
+python speed_controller.py video.mkv -t 30
+```
+
+**Batch Mode** (use `--pattern` to specify format):
+```bash
+# Process all MOV files
+python speed_controller.py --batch D:\videos --pattern "*.mov" -t 30
+
+# Process all AVI files
+python speed_controller.py --batch D:\videos --pattern "*.avi" -t 30
+```
+
+### ⚠️ Important Notes
+
+- **Merge Mode Recommendation**: When using `--merge` or `--merge-only`, it's recommended that all videos have consistent format, resolution, and frame rate to avoid compatibility issues
+- **Fixed Output**: Regardless of input format, output is always MP4 (H.264)
+- **Codec Compatibility**: Some special codecs (e.g., ProRes, HEVC) may require FFmpeg to include corresponding decoder support
+
+---
+
+## 📋 File Naming Recommendations
+
+To ensure the merge function correctly recognizes file order, we recommend the following naming conventions:
+
+### ✅ **Recommended Naming Format**
+
+**Format 1: name_number** (Recommended)
+```
+part_1.mp4
+part_2.mp4
+part_10.mp4
+part_20.mp4
+```
+
+```
+recording_001.mp4
+recording_002.mp4
+recording_010.mp4
+```
+
+```
+drawing_process_1.mp4
+drawing_process_2.mp4
+drawing_process_3.mp4
+```
+
+**Format 2: name+number** (Also Supported)
+```
+part1.mp4
+part2.mp4
+part10.mp4
+part20.mp4
+```
+
+```
+video1.mp4
+video2.mp4
+video10.mp4
+```
+
+### ⚠️ **Important Notes**
+
+- Numbers should be at the **end** of the filename (before extension)
+- Supports two formats: `name_number` or `name+number` (letters directly followed by numbers)
+- Program sorts by numeric value, not string comparison (`part10.mp4` correctly comes after `part2.mp4`)
+- If filenames don't follow this convention, program will sort alphabetically and ask for confirmation
+
+### 🔧 **Other Naming Patterns Also Work**
+
+Even if filenames don't follow the above convention, the program will:
+1. Display the auto-sorted result
+2. Ask you to confirm if it's correct
+3. If not, you can manually specify the order
+
+---
+
 ## 🛠️ FAQ
 
 ### Q: Cannot find ffmpeg/ffprobe?
@@ -725,6 +1176,15 @@ After modification, running `python speed_controller.py video.mp4` will automati
 ---
 
 ## 📝 Changelog
+
+### v1.2.0
+- ✅ Added merge-only mode (`--merge-only`): Only concatenate videos without speed processing
+- ✅ Added duration-only mode (`--duration-only`): Calculate total duration without any processing
+- ✅ Added smart sorting: Automatically recognizes `_number` pattern at end of filenames, sorts by numeric value
+- ✅ Added interactive confirmation: Shows file list before merging for user confirmation
+- ✅ Added custom sorting: Supports manually specifying file merge order with undo capability
+- ✅ Added `--yes` parameter: Skip interaction prompts, auto-confirm (for automation scripts)
+- ✅ Added mode conflict detection to prevent using multiple mutually exclusive modes
 
 ### v1.1.0
 - ✅ Added merge mode: Support for concatenating multiple videos before speed processing

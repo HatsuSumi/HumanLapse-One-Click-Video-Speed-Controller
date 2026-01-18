@@ -1,6 +1,7 @@
 import argparse
 import json
 import os
+import re
 import subprocess
 import time
 from pathlib import Path
@@ -17,7 +18,7 @@ from datetime import datetime
 
 # --- [1. 视频时长与帧率] ---
 DEFAULT_TARGET_SECONDS = 30.0   # 默认目标时长（秒）。想压成60秒？改为 60.0
-DEFAULT_FPS = 25                # 默认输出帧率。25 (PAL标准), 30 (NTSC), 60 (高帧率)
+DEFAULT_FPS = 60                # 默认输出帧率。25 (PAL标准), 30 (NTSC), 60 (高帧率)
 
 # --- [2. 画质与编码 (PR级参数)] ---
 DEFAULT_TARGET_BITRATE = "6000k"    # 目标码率 (6Mbps)。数值越大画质越好，体积也越大
@@ -32,7 +33,7 @@ DEFAULT_LEVEL = "4.0"               # H.264 Level (影响设备兼容性，4.0�
 #   "1080p"  : 1920x1080
 #   "720p"   : 1280x720
 #   "4k"     : 3840x2160
-DEFAULT_RES = "1080p"
+DEFAULT_RES = "source"
 
 # 适配模式可选 (当原视频比例与目标分辨率不同时)：
 #   "contain" : 缩放以包含在框内 (无黑边，最终尺寸可能不严格等于目标)
@@ -46,6 +47,8 @@ DEFAULT_PATTERN = "*.mp4"       # 批量匹配的文件后缀，例如 "*.mov", 
 DEFAULT_RECURSE = False         # True = 批量时自动搜索所有子文件夹; False = 仅当前文件夹
 DEFAULT_SKIP_EXISTING = False   # True = 如果输出文件已存在，则跳过不处理 (防重复)
 DEFAULT_MERGE = False           # True = 合并模式：拼接所有视频后再加速; False = 每个视频单独处理
+DEFAULT_MERGE_ONLY = False      # True = 只合并不加速：仅拼接视频，不做速度处理
+DEFAULT_DURATION_ONLY = False   # True = 只输出总时长：统计所有视频时长，不做任何处理
 
 # --- [5. 日志与杂项] ---
 # 日志设置：
@@ -194,6 +197,173 @@ def build_scale_filter(target_wh: tuple[int, int] | None, fit: str) -> str | Non
         return f"scale={W}:{H}:flags=lanczos"
 
     raise ValueError("fit 只支持 contain/pad/crop/stretch")
+
+
+def extract_trailing_number(filename: str) -> int | None:
+    """
+    提取文件名末尾的数字部分（支持多种格式）
+    例如：part_10.mp4 → 10
+          part10.mp4 → 10
+          video_5.avi → 5
+          video5.avi → 5
+          random.mp4 → None
+    """
+    # 尝试匹配：下划线+数字（part_10.mp4）
+    match = re.search(r'_(\d+)(?:\.[^.]+)?$', filename)
+    if match:
+        return int(match.group(1))
+    
+    # 尝试匹配：字母+数字（part10.mp4）
+    match = re.search(r'[a-zA-Z](\d+)(?:\.[^.]+)?$', filename)
+    if match:
+        return int(match.group(1))
+    
+    return None
+
+
+def smart_sort_files(files: list[Path]) -> list[Path]:
+    """
+    智能排序：优先按文件名末尾的 _数字 排序
+    如果没有 _数字，则按文件名字母顺序排序
+    """
+    def sort_key(path: Path) -> tuple:
+        num = extract_trailing_number(path.name)
+        if num is not None:
+            # 有数字：按数字排序，数字相同则按文件名排序
+            return (0, num, path.name.lower())
+        else:
+            # 无数字：放在后面，按文件名排序
+            return (1, 0, path.name.lower())
+    
+    return sorted(files, key=sort_key)
+
+
+def interactive_reorder(files: list[Path]) -> list[Path] | None:
+    """
+    交互式重新排序文件
+    
+    Returns:
+        重新排序后的文件列表，如果用户取消则返回 None
+    """
+    print("\n========== 自定义排序模式 ==========")
+    print("可选视频列表：")
+    for i, f in enumerate(files, start=1):
+        print(f"  [{i}] {f.name}")
+    
+    print("\n提示：输入编号选择视频，输入 b 返回上一步，输入 q 取消操作\n")
+    
+    ordered = []
+    position = 0
+    used_indices = set()
+    
+    while position < len(files):
+        prompt = f"请选择第{position + 1}个视频 [编号1-{len(files)}]: "
+        try:
+            user_input = input(prompt).strip().lower()
+            
+            # 取消操作
+            if user_input in ('q', 'quit', 'exit'):
+                print("[信息] 已取消操作")
+                return None
+            
+            # 返回上一步
+            if user_input in ('b', 'back', 'u', 'undo'):
+                if position > 0:
+                    position -= 1
+                    removed = ordered.pop()
+                    removed_idx = files.index(removed) + 1
+                    used_indices.discard(removed_idx)
+                    print(f"[信息] 已撤销，返回第{position + 1}个位置")
+                else:
+                    print("[警告] 已经是第一个位置，无法返回")
+                continue
+            
+            # 尝试解析为数字
+            try:
+                idx = int(user_input)
+            except ValueError:
+                print(f"[错误] 无效输入，请输入 1-{len(files)} 之间的数字，或 b 返回，或 q 取消")
+                continue
+            
+            # 检查范围
+            if idx < 1 or idx > len(files):
+                print(f"[错误] 编号超出范围，请输入 1-{len(files)} 之间的数字")
+                continue
+            
+            # 检查是否已使用
+            if idx in used_indices:
+                print(f"[错误] 编号 {idx} 已被选择，请选择其他视频")
+                continue
+            
+            # 添加到排序列表
+            ordered.append(files[idx - 1])
+            used_indices.add(idx)
+            position += 1
+            
+        except (EOFError, KeyboardInterrupt):
+            print("\n[信息] 已取消操作")
+            return None
+    
+    # 显示最终顺序
+    print("\n========== 最终顺序预览 ==========")
+    for i, f in enumerate(ordered, start=1):
+        print(f"  [{i}] {f.name}")
+    
+    # 最终确认
+    while True:
+        try:
+            confirm = input("\n确认此顺序？(y=确认/n=重新排序/q=取消): ").strip().lower()
+            if confirm in ('y', 'yes'):
+                return ordered
+            elif confirm in ('n', 'no'):
+                # 递归重新排序
+                return interactive_reorder(files)
+            elif confirm in ('q', 'quit', 'exit'):
+                print("[信息] 已取消操作")
+                return None
+            else:
+                print("[错误] 请输入 y、n 或 q")
+        except (EOFError, KeyboardInterrupt):
+            print("\n[信息] 已取消操作")
+            return None
+
+
+def confirm_file_order(files: list[Path], auto_yes: bool = False) -> list[Path] | None:
+    """
+    显示文件顺序并让用户确认
+    
+    Args:
+        files: 已排序的文件列表
+        auto_yes: 是否自动确认（跳过交互）
+    
+    Returns:
+        确认后的文件列表，如果用户取消则返回 None
+    """
+    print(f"\n[信息] 将按以下顺序合并 {len(files)} 个视频：")
+    for i, f in enumerate(files, start=1):
+        print(f"  [{i}] {f.name}")
+    
+    if auto_yes:
+        print("\n[信息] 自动确认模式，跳过交互")
+        return files
+    
+    while True:
+        try:
+            response = input("\n是否符合预期？y是，n否，自定义排序(y/n): ").strip().lower()
+            
+            if response in ('y', 'yes'):
+                return files
+            elif response in ('n', 'no'):
+                # 进入交互式排序
+                reordered = interactive_reorder(files)
+                if reordered is None:
+                    return None
+                return reordered
+            else:
+                print("[错误] 请输入 y 或 n")
+        except (EOFError, KeyboardInterrupt):
+            print("\n[信息] 已取消操作")
+            return None
 
 
 def shutdown_windows(delay_seconds: int = 60):
@@ -431,10 +601,18 @@ def timelapse_one(
 
 
 # ----------------- 合并模式 -----------------
-def merge_videos(files: list[Path], output_path: Path, quiet: bool) -> Path:
+def merge_videos(files: list[Path], output_path: Path, quiet: bool, is_temp: bool = True) -> Path:
     """
-    使用 FFmpeg concat 将多个视频拼接成一个临时文件
-    返回临时文件路径
+    使用 FFmpeg concat 将多个视频拼接成一个文件
+    
+    Args:
+        files: 要合并的视频文件列表
+        output_path: 输出路径（用于确定输出目录和命名）
+        quiet: 是否安静模式
+        is_temp: True=创建临时文件; False=创建最终输出文件
+    
+    Returns:
+        合并后的文件路径
     """
     if not files:
         raise ValueError("没有文件可供合并")
@@ -449,20 +627,23 @@ def merge_videos(files: list[Path], output_path: Path, quiet: bool) -> Path:
                 safe_path = str(video.absolute()).replace("'", "'\\''")
                 f.write(f"file '{safe_path}'\n")
         
-        # 临时合并文件
-        temp_merged = output_path.parent / f"_temp_merged_{int(time.time())}.mp4"
+        # 根据 is_temp 决定输出文件名
+        if is_temp:
+            merged_file = output_path.parent / f"_temp_merged_{int(time.time())}.mp4"
+        else:
+            merged_file = output_path
         
         print(f"[信息] 正在合并 {len(files)} 个视频...")
         
         cmd = [FFMPEG, "-f", "concat", "-safe", "0", "-i", str(concat_list)]
         if quiet:
             cmd += ["-loglevel", "error"]
-        cmd += ["-c", "copy", "-y", str(temp_merged)]
+        cmd += ["-c", "copy", "-y", str(merged_file)]
         
         subprocess.check_call(cmd)
         
-        print(f"[信息] 合并完成：{temp_merged}")
-        return temp_merged
+        print(f"[信息] 合并完成：{merged_file}")
+        return merged_file
         
     finally:
         # 清理 concat 列表文件
@@ -471,6 +652,94 @@ def merge_videos(files: list[Path], output_path: Path, quiet: bool) -> Path:
                 concat_list.unlink()
             except Exception:
                 pass
+
+
+def merge_only(
+    folder: Path,
+    pattern: str,
+    recurse: bool,
+    quiet: bool,
+    auto_yes: bool = False,
+) -> Path | None:
+    """
+    只合并模式：收集所有视频 -> 拼接成一个文件（不做速度处理）
+    
+    Returns:
+        输出文件路径，如果用户取消则返回 None
+    """
+    files = collect_files(folder, pattern, recurse)
+    if not files:
+        raise RuntimeError(f"[错误] 没找到匹配文件：{folder} / {pattern}（recurse={recurse}）")
+    
+    print(f"[信息] 只合并模式：找到 {len(files)} 个文件")
+    
+    # 确认文件顺序
+    confirmed_files = confirm_file_order(files, auto_yes)
+    if confirmed_files is None:
+        return None
+    
+    # 输出文件名
+    output_name = f"{folder.name}_merged.mp4"
+    output_path = folder / output_name
+    
+    # 合并所有视频（直接输出最终文件）
+    t0 = now_perf()
+    final_output = merge_videos(confirmed_files, output_path, quiet, is_temp=False)
+    t_total = now_perf() - t0
+    
+    print(f"\n[统计] 合并耗时：{format_hms(t_total)}（{t_total:.2f}s）")
+    print(f"[完成] 只合并模式输出：{final_output}")
+    
+    return final_output
+
+
+def duration_only(
+    folder: Path,
+    pattern: str,
+    recurse: bool,
+) -> tuple[float, int]:
+    """
+    只输出总时长模式：统计所有视频的总时长（不做任何处理）
+    
+    Returns:
+        (总时长秒数, 文件数量)
+    """
+    files = collect_files(folder, pattern, recurse)
+    if not files:
+        print(f"[信息] 没找到匹配文件：{folder} / {pattern}（recurse={recurse}）")
+        return 0.0, 0
+    
+    print(f"[信息] 只输出总时长模式：找到 {len(files)} 个文件")
+    print(f"[信息] 正在读取视频时长...\n")
+    
+    total_duration = 0.0
+    success_count = 0
+    fail_count = 0
+    
+    for i, f in enumerate(files, start=1):
+        try:
+            dur = probe_duration_seconds(str(f))
+            total_duration += dur
+            success_count += 1
+            print(f"  [{i}/{len(files)}] {f.name}")
+            print(f"           时长: {format_hms(dur)} ({dur:.2f}s)")
+        except Exception as e:
+            fail_count += 1
+            print(f"  [{i}/{len(files)}] {f.name}")
+            print(f"           [失败] {e}")
+    
+    print(f"\n========== 统计结果 ==========")
+    print(f"[统计] 成功读取：{success_count} 个")
+    if fail_count > 0:
+        print(f"[统计] 失败：{fail_count} 个")
+    print(f"[统计] 总时长：{format_hms(total_duration)} ({total_duration:.2f}s)")
+    
+    # 计算平均时长
+    if success_count > 0:
+        avg_duration = total_duration / success_count
+        print(f"[统计] 平均时长：{format_hms(avg_duration)} ({avg_duration:.2f}s)")
+    
+    return total_duration, success_count
 
 
 def merge_and_process(
@@ -489,17 +758,24 @@ def merge_and_process(
     fit: str,
     quiet: bool,
     log_spec: str | None,
-) -> Path:
+    auto_yes: bool = False,
+) -> Path | None:
     """
     合并模式：收集所有视频 -> 拼接成一个 -> 加速处理
+    
+    Returns:
+        输出文件路径，如果用户取消则返回 None
     """
     files = collect_files(folder, pattern, recurse)
     if not files:
         raise RuntimeError(f"[错误] 没找到匹配文件：{folder} / {pattern}（recurse={recurse}）")
     
     print(f"[信息] 合并模式：找到 {len(files)} 个文件")
-    for i, f in enumerate(files, start=1):
-        print(f"  [{i}] {f.name}")
+    
+    # 确认文件顺序
+    confirmed_files = confirm_file_order(files, auto_yes)
+    if confirmed_files is None:
+        return None
     
     # 输出文件名
     time_str = f"{target_seconds:g}s".replace(".", "p")
@@ -509,7 +785,7 @@ def merge_and_process(
     # 1. 合并所有视频
     temp_merged = None
     try:
-        temp_merged = merge_videos(files, output_path, quiet)
+        temp_merged = merge_videos(confirmed_files, output_path, quiet, is_temp=True)
         
         # 2. 对合并后的视频进行加速处理
         print(f"\n[信息] 开始处理合并后的视频...")
@@ -533,18 +809,43 @@ def merge_and_process(
         # 重命名输出文件（因为 timelapse_one 会自动生成名字）
         if final_output != output_path:
             final_output.rename(output_path)
+            
+            # 同时重命名日志文件（如果存在）
+            if log_spec is not None:
+                temp_log = final_output.with_suffix(".log.txt")
+                if temp_log.exists():
+                    final_log = output_path.with_suffix(".log.txt")
+                    try:
+                        temp_log.rename(final_log)
+                        print(f"[信息] 日志文件已重命名：{final_log.name}")
+                    except Exception as e:
+                        print(f"[警告] 重命名日志文件失败：{e}")
         
         print(f"\n[完成] 合并模式输出：{output_path}")
         return output_path
         
     finally:
-        # 清理临时合并文件
-        if temp_merged and temp_merged.exists():
-            try:
-                temp_merged.unlink()
-                print(f"[信息] 已清理临时文件：{temp_merged}")
-            except Exception as e:
-                print(f"[警告] 清理临时文件失败：{e}")
+        # 清理临时合并文件及相关文件
+        if temp_merged:
+            # 清理临时视频文件
+            if temp_merged.exists():
+                try:
+                    temp_merged.unlink()
+                    print(f"[信息] 已清理临时文件：{temp_merged}")
+                except Exception as e:
+                    print(f"[警告] 清理临时视频文件失败：{e}")
+            
+            # 清理 passlog 文件（但保留日志文件）
+            temp_stem = temp_merged.stem  # 不含扩展名的文件名
+            temp_parent = temp_merged.parent
+            
+            # 只清理 passlog 文件，不清理 .log.txt
+            for temp_file in temp_parent.glob(f"{temp_stem}*_passlog*"):
+                try:
+                    temp_file.unlink()
+                    print(f"[信息] 已清理临时文件：{temp_file.name}")
+                except Exception as e:
+                    print(f"[警告] 清理临时文件失败：{temp_file.name} - {e}")
 
 
 # ----------------- 批量模式 -----------------
@@ -555,8 +856,26 @@ def collect_files(folder: Path, pattern: str, recurse: bool) -> list[Path]:
         files = list(folder.glob(pattern))
     # 只要文件
     files = [p for p in files if p.is_file()]
-    # 稳定排序：按完整路径字符串
-    files.sort(key=lambda p: str(p).lower())
+    
+    # 过滤掉临时文件和输出文件
+    filtered_files = []
+    for f in files:
+        name = f.name
+        # 排除临时文件
+        if name.startswith('_temp_merged_'):
+            continue
+        if name.startswith('_concat_list_'):
+            continue
+        # 排除已处理的输出文件
+        if '_timelapse_' in name and name.endswith('_PR.mp4'):
+            continue
+        if name.endswith('_merged.mp4'):
+            continue
+        # 保留
+        filtered_files.append(f)
+    
+    # 智能排序：优先识别文件名末尾的数字
+    files = smart_sort_files(filtered_files)
     return files
 
 
@@ -650,6 +969,8 @@ def main():
     parser.add_argument("--pattern", default=DEFAULT_PATTERN, help='批量匹配规则（默认 "*.mp4"）')
     parser.add_argument("--recurse", action="store_true", default=DEFAULT_RECURSE, help="批量模式：递归子目录")
     parser.add_argument("--merge", action="store_true", default=DEFAULT_MERGE, help="合并模式：拼接所有视频后再加速（需配合 --batch 使用）")
+    parser.add_argument("--merge-only", action="store_true", default=DEFAULT_MERGE_ONLY, help="只合并模式：仅拼接视频，不做速度处理（需配合 --batch 使用）")
+    parser.add_argument("--duration-only", action="store_true", default=DEFAULT_DURATION_ONLY, help="只输出总时长模式：统计所有视频时长，不做任何处理（需配合 --batch 使用）")
 
     # 通用参数
     parser.add_argument("-t", "--target", default=str(DEFAULT_TARGET_SECONDS),
@@ -676,6 +997,9 @@ def main():
 
     # 批量：跳过已存在
     parser.add_argument("--skip-existing", action="store_true", default=DEFAULT_SKIP_EXISTING, help="若输出文件已存在则跳过（批量很实用）")
+    
+    # 自动确认（跳过交互）
+    parser.add_argument("--yes", "-y", action="store_true", help="自动确认所有提示，跳过交互（适用于合并模式）")
 
     # 自动关机：单文件模式=本文件完成后关机；批量模式=全部完成后关机
     # default 根据 DEFAULT_SHUTDOWN_ENABLE 决定是 None 还是 延迟秒数
@@ -707,10 +1031,40 @@ def main():
         if not folder.exists() or not folder.is_dir():
             raise SystemExit(f"[错误] batch 路径不是有效文件夹：{folder}")
 
-        # 合并模式：拼接所有视频后再加速
-        if args.merge:
+        # 检查模式冲突
+        mode_count = sum([args.merge, args.merge_only, args.duration_only])
+        if mode_count > 1:
+            raise SystemExit("[错误] --merge、--merge-only、--duration-only 只能选择一个")
+
+        # 只输出总时长模式：统计所有视频时长
+        if args.duration_only:
             try:
-                merge_and_process(
+                duration_only(
+                    folder=folder,
+                    pattern=args.pattern,
+                    recurse=args.recurse,
+                )
+            except Exception as e:
+                raise SystemExit(f"[错误] 只输出总时长模式失败：{e}")
+        # 只合并模式：拼接视频但不加速
+        elif args.merge_only:
+            try:
+                result = merge_only(
+                    folder=folder,
+                    pattern=args.pattern,
+                    recurse=args.recurse,
+                    quiet=args.quiet,
+                    auto_yes=args.yes,
+                )
+                if result is None:
+                    print("[信息] 操作已取消")
+                    return
+            except Exception as e:
+                raise SystemExit(f"[错误] 只合并模式失败：{e}")
+        # 合并模式：拼接所有视频后再加速
+        elif args.merge:
+            try:
+                result = merge_and_process(
                     folder=folder,
                     pattern=args.pattern,
                     recurse=args.recurse,
@@ -726,7 +1080,11 @@ def main():
                     fit=args.fit,
                     quiet=args.quiet,
                     log_spec=args.log,
+                    auto_yes=args.yes,
                 )
+                if result is None:
+                    print("[信息] 操作已取消")
+                    return
             except Exception as e:
                 raise SystemExit(f"[错误] 合并模式失败：{e}")
         else:
@@ -787,7 +1145,10 @@ def main():
     except ValueError as e:
         raise SystemExit(f"[错误] 参数错误：{e}")
     except subprocess.CalledProcessError as e:
-        raise SystemExit(f"[错误] ffmpeg 执行失败，返回码 {e.returncode}")
+        error_msg = f"[错误] ffmpeg 执行失败，返回码 {e.returncode}"
+        if e.returncode == -28:
+            error_msg += "\n[提示] 磁盘空间不足！请清理磁盘空间或更换输出位置。"
+        raise SystemExit(error_msg)
 
 
 if __name__ == "__main__":
