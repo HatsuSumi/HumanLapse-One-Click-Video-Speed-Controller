@@ -1,58 +1,97 @@
-@echo off
-chcp 65001 >nul
-echo ========================================
-echo   HumanLapse - 打包为 EXE
-echo ========================================
-echo.
-
-REM 检查是否安装了 PyInstaller
-python -c "import PyInstaller" 2>nul
-if errorlevel 1 (
-    echo [错误] 未检测到 PyInstaller
-    echo.
-    echo 正在安装 PyInstaller...
-    pip install pyinstaller
-    if errorlevel 1 (
-        echo.
-        echo [错误] 安装失败，请手动执行：
-        echo   pip install pyinstaller
-        pause
-        exit /b 1
-    )
-)
-
-echo [信息] 开始打包...
-echo.
-
-REM 打包为单个 EXE 文件
-pyinstaller --onefile ^
-    --name "HumanLapse" ^
-    --console ^
-    --add-data "speed_controller.py;." ^
-    --noconfirm ^
-    speed_controller_drag.py
-
-if errorlevel 1 (
-    echo.
-    echo ========================================
-    echo   打包失败！
-    echo ========================================
-    pause
-    exit /b 1
-)
-
-echo.
-echo ========================================
-echo   打包完成！
-echo ========================================
-echo.
-echo 输出位置：dist\HumanLapse.exe
-echo.
-echo 使用方法：
-echo   1. 拖动视频文件到 HumanLapse.exe
-echo   2. 拖动文件夹到 HumanLapse.exe
-echo.
-echo 注意：用户仍需安装 FFmpeg 并添加到 PATH
-echo.
-pause
-
+﻿@echo off
+chcp 65001 >nul
+echo ========================================
+echo   HumanLapse - Build EXE
+echo ========================================
+echo.
+
+REM Check PyInstaller
+python -c "import PyInstaller" 2>nul
+if errorlevel 1 (
+    echo [ERROR] PyInstaller not found
+    echo.
+    echo Installing PyInstaller...
+    pip install pyinstaller
+    if errorlevel 1 (
+        echo.
+        echo [ERROR] Install failed. Please run:
+        echo   pip install pyinstaller
+        pause
+        exit /b 1
+    )
+)
+
+echo [INFO] Start building...
+echo.
+
+call :build_exe HumanLapse_30s
+if errorlevel 1 goto :build_failed
+
+call :build_exe HumanLapse_60s
+if errorlevel 1 goto :build_failed
+
+call :copy_ffmpeg_binaries
+if errorlevel 1 goto :build_failed
+
+echo.
+echo ========================================
+echo   Build complete!
+echo ========================================
+echo(
+echo(Output files:
+echo(  dist\HumanLapse_30s.exe
+echo(  dist\HumanLapse_60s.exe
+echo(  dist\ffmpeg.exe
+echo(  dist\ffprobe.exe
+echo(
+echo(Usage:
+echo(  1. Keep EXE, ffmpeg.exe and ffprobe.exe together
+echo(  2. Drag a video file onto the target EXE
+echo(  3. Drag a folder onto the target EXE
+echo(
+echo(Notes:
+echo(  - HumanLapse_30s.exe outputs 30-second videos
+echo(  - HumanLapse_60s.exe outputs 60-second videos
+echo(  - FFmpeg is included in this release package
+echo(
+pause
+exit /b 0
+
+:build_exe
+echo [INFO] Building %~1.exe ...
+pyinstaller --onefile ^
+    --name "%~1" ^
+    --console ^
+    --add-data "speed_controller.py;." ^
+    --noconfirm ^
+    speed_controller_drag.py
+if errorlevel 1 exit /b 1
+echo [INFO] %~1.exe built successfully
+echo.
+exit /b 0
+
+:copy_ffmpeg_binaries
+echo [INFO] Copying FFmpeg binaries...
+if not exist "ffmpeg.exe" (
+    echo [ERROR] Missing ffmpeg.exe in project root
+    exit /b 1
+)
+if not exist "ffprobe.exe" (
+    echo [ERROR] Missing ffprobe.exe in project root
+    exit /b 1
+)
+copy /Y "ffmpeg.exe" "dist\ffmpeg.exe" >nul
+if errorlevel 1 exit /b 1
+copy /Y "ffprobe.exe" "dist\ffprobe.exe" >nul
+if errorlevel 1 exit /b 1
+echo [INFO] FFmpeg binaries copied
+echo.
+exit /b 0
+
+:build_failed
+echo.
+echo ========================================
+echo   Build failed!
+echo ========================================
+pause
+exit /b 1

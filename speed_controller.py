@@ -1,8 +1,9 @@
-import argparse
+﻿import argparse
 import json
 import os
 import re
 import subprocess
+import sys
 import time
 from pathlib import Path
 from datetime import datetime
@@ -64,8 +65,21 @@ DEFAULT_SHUTDOWN_ENABLE = False # True = 任务完成后自动关机 (仅Windows
 DEFAULT_SHUTDOWN_DELAY = 60     # 自动关机倒计时 (秒)
 
 
-FFMPEG = "ffmpeg"
-FFPROBE = "ffprobe"
+def get_runtime_base_dir() -> Path:
+    if getattr(sys, "frozen", False):
+        return Path(sys.executable).resolve().parent
+    return Path(__file__).resolve().parent
+
+
+def resolve_binary(name: str) -> str:
+    exe_name = f"{name}.exe" if os.name == "nt" else name
+    local_path = get_runtime_base_dir() / exe_name
+    if local_path.exists():
+        return str(local_path)
+    return name
+
+FFMPEG = resolve_binary("ffmpeg")
+FFPROBE = resolve_binary("ffprobe")
 
 
 # ----------------- 工具函数 -----------------

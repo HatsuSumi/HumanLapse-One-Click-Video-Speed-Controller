@@ -36,3 +36,7 @@ desktop.ini
 _temp_merged_*
 _concat_list_*
 
+# 本地工具与会话文件
+.specstory/
+ffmpeg.exe
+ffprobe.exe
